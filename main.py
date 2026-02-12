@@ -1,11 +1,16 @@
 from fastapi import FastAPI
 from pydantic import BaseModel
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 import re
+import os
 
 app = FastAPI()
 
-# Allow frontend to talk to backend
+# ------------------------------
+# CORS
+# ------------------------------
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -14,15 +19,16 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# ------------------------------
+# Request Model
+# ------------------------------
 class CodeInput(BaseModel):
     code: str
 
 
-@app.get("/")
-def read_root():
-    return {"message": "Backend is working 🚀"}
-
-
+# ------------------------------
+# API ROUTES
+# ------------------------------
 @app.post("/review")
 def review_code(input: CodeInput):
     code = input.code
@@ -31,14 +37,13 @@ def review_code(input: CodeInput):
     suggestions = []
     score = 10
 
-    # 🔥 Category Scores (Phase 5 Upgrade)
     security_score = 10
     performance_score = 10
     maintainability_score = 10
 
     lines = code.split("\n")
 
-    # 🔹 Detect overall long code
+    # 🔹 Long code
     if len(lines) > 20:
         issues.append({
             "message": "The overall code is long. Consider splitting it into smaller modules.",
@@ -47,7 +52,7 @@ def review_code(input: CodeInput):
         score -= 1
         maintainability_score -= 2
 
-    # 🔹 Detect long functions
+    # 🔹 Long functions
     for index, line in enumerate(lines):
         if line.strip().startswith("def "):
             start_line = index
@@ -130,42 +135,38 @@ def review_code(input: CodeInput):
         suggestions.append("Add comments to improve readability.")
         maintainability_score -= 1
 
-    # 🔹 Prevent negative values
+    # Prevent negatives
     score = max(score, 0)
     security_score = max(security_score, 0)
     performance_score = max(performance_score, 0)
     maintainability_score = max(maintainability_score, 0)
 
-    # 🔥 Smart AI-Style Feedback Generator
+    # AI Feedback
     ai_feedback = "Based on structural and security analysis, "
 
     if security_score < 7:
         ai_feedback += "there are potential security vulnerabilities that should be addressed immediately. "
 
     if performance_score < 7:
-        ai_feedback += "performance may degrade with large datasets due to nested iterations or inefficient logic. "
+        ai_feedback += "performance may degrade with large datasets due to inefficient logic. "
 
     if maintainability_score < 7:
         ai_feedback += "code structure could benefit from modularization and better separation of concerns. "
 
     if score >= 9:
-        ai_feedback = "Your code demonstrates strong structure, readability, and safe programming practices. Minor refinements can further improve production readiness."
+        ai_feedback = "Your code demonstrates strong structure and safe programming practices."
 
-    ai_feedback += " Improving these areas will make the application more scalable, maintainable, and production-ready."
+    ai_feedback += " Improving these areas will make the application more scalable and production-ready."
 
-    # 🔹 Human Explanation
+    # Human Explanation
     if issues or suggestions:
         explanation = "After reviewing your code, here are my observations. "
 
-        if issues:
-            explanation += "I noticed some structural concerns. "
-            for issue in issues:
-                explanation += issue["message"] + " "
+        for issue in issues:
+            explanation += issue["message"] + " "
 
-        if suggestions:
-            explanation += "Here are some improvements you can consider. "
-            for suggestion in suggestions:
-                explanation += suggestion + " "
+        for suggestion in suggestions:
+            explanation += suggestion + " "
 
         explanation += "Addressing these points will significantly improve overall quality."
     else:
@@ -181,3 +182,15 @@ def review_code(input: CodeInput):
         "explanation": explanation,
         "ai_feedback": ai_feedback
     }
+
+
+# ------------------------------
+# SERVE REACT BUILD
+# ------------------------------
+
+if os.path.exists("build"):
+    app.mount("/static", StaticFiles(directory="build/static"), name="static")
+
+    @app.get("/{full_path:path}")
+    async def serve_react_app(full_path: str):
+        return FileResponse("build/index.html")
